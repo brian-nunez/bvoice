@@ -1,0 +1,7 @@
+# build outputs
+/dist/
+/build/
+/third_party/
+# model copied in by the Makefile at build time
+/internal/model/model.bin
+.DS_Store
