@@ -1,6 +1,8 @@
 # Architecture
 
-bvoice is a local speech-to-text dictation tool for macOS. Tapping a modifier key starts listening;
+bvoice is a local speech-to-text dictation tool. macOS is the supported platform; the core is
+platform-independent, and platform-specific code sits behind interfaces (see
+[Adding a platform](#adding-a-platform)). Tapping a modifier key starts listening;
 tapping it again stops, and the transcript is copied to the clipboard. Each binary embeds one Whisper
 model and runs entirely on the device.
 
@@ -8,8 +10,8 @@ model and runs entirely on the device.
 
 - **Single binary.** The Whisper model, whisper.cpp, its Metal shaders and SQLite are all compiled
   into the executable. Nothing else ships beside it.
-- **No special permissions.** bvoice does not need Accessibility, Input Monitoring or any other
-  System Settings change. The only prompt is macOS's microphone consent.
+- **No special permissions.** On macOS, bvoice does not need Accessibility, Input Monitoring or any
+  other System Settings change. The only prompt is the microphone consent.
 - **Clipboard output.** Typing into other apps would require Accessibility, so transcripts go to the
   clipboard instead.
 - **Modifier-tap hotkeys.** Global key combinations need Input Monitoring. bvoice instead polls the

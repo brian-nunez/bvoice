@@ -1,17 +1,22 @@
 # bvoice
 
-Local, private dictation for macOS. Tap **Left Option**, talk, and tap it again: the text is on your
-clipboard about a second later, whether you said one sentence or several pages. Everything runs on
-your Mac, and each binary has its Whisper model built in.
+Local, private dictation. Tap a hotkey (**Left Option** by default), talk, and tap it again: the text
+is on your clipboard about a second later, whether you said one sentence or several pages. Everything
+runs on your computer, and each binary has its Whisper model built in.
 
-- Runs as a single executable and needs no Accessibility or Input Monitoring permission. The only
-  prompt is macOS's microphone consent.
+**Platforms:** macOS is supported. The core is platform-independent; each platform supplies its own
+hotkey, clipboard, sounds and UI (see [Adding a platform](docs/architecture.md#adding-a-platform)).
+
+- Runs as a single executable. On macOS it needs no Accessibility or Input Monitoring permission;
+  the only prompt is the microphone consent.
 - A menu bar icon opens a small floating window with status, searchable history (click an entry to
   copy it), export, settings, and a notice when launch flags differ from your saved settings.
-- Settings and history are stored in `~/Library/Application Support/bvoice/bvoice.db`.
+- Settings and history are stored in `bvoice.db` in the user configuration folder
+  (`~/Library/Application Support/bvoice` on macOS).
 
-See [docs/configuration.md](docs/configuration.md) for every setting and flag, and
-[docs/architecture.md](docs/architecture.md) for how it works.
+See [docs/configuration.md](docs/configuration.md) for every setting and flag,
+[docs/architecture.md](docs/architecture.md) for how it works, and [docs/roadmap.md](docs/roadmap.md)
+for planned work.
 
 ## Build
 
@@ -89,5 +94,5 @@ internal/settings    option table: defaults, flags, validation, sync diff, UI co
 internal/store       SQLite settings and history
 internal/platform    hotkey, clipboard and sounds (macOS in platform_darwin.go)
 internal/ui          UI contract; ui/appkit is the macOS implementation
-docs                 configuration reference and architecture
+docs                 configuration reference, architecture and roadmap
 ```
