@@ -58,6 +58,21 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 - (BOOL)isFlipped { return YES; }
 @end
 
+// BVWrapLabel wraps to its laid-out width, so its height follows the width of the window.
+
+@interface BVWrapLabel : NSTextField
+@end
+@implementation BVWrapLabel
+- (void)layout {
+	[super layout];
+	CGFloat width = NSWidth(self.bounds);
+	if (self.preferredMaxLayoutWidth != width) {
+		self.preferredMaxLayoutWidth = width;
+		[self invalidateIntrinsicContentSize];
+	}
+}
+@end
+
 @interface BVController : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
 @property(strong) NSStatusItem *statusItem;
 @property(strong) BVPanel *panel;
@@ -156,8 +171,7 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	self.noticeBox.cornerRadius = 6;
 	self.noticeBox.borderColor = [NSColor systemYellowColor];
 	self.noticeBox.fillColor = [[NSColor systemYellowColor] colorWithAlphaComponent:0.12];
-	self.noticeBox.contentViewMargins = NSMakeSize(8, 8);
-	self.noticeLabel = [NSTextField wrappingLabelWithString:
+	self.noticeLabel = [BVWrapLabel wrappingLabelWithString:
 	    @"You started bvoice with different options than your saved settings. Do you want to sync them?"];
 	self.noticeLabel.font = [NSFont systemFontOfSize:11];
 	NSButton *sync = [NSButton buttonWithTitle:@"Sync" target:self action:@selector(syncClicked:)];
@@ -165,7 +179,14 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	noticeRow.alignment = NSLayoutAttributeCenterY;
 	[self.noticeLabel setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
 	                                           forOrientation:NSLayoutConstraintOrientationHorizontal];
-	self.noticeBox.contentView = noticeRow;
+	noticeRow.translatesAutoresizingMaskIntoConstraints = NO;
+	[self.noticeBox.contentView addSubview:noticeRow];
+	[NSLayoutConstraint activateConstraints:@[
+		[noticeRow.leadingAnchor constraintEqualToAnchor:self.noticeBox.leadingAnchor constant:8],
+		[noticeRow.trailingAnchor constraintEqualToAnchor:self.noticeBox.trailingAnchor constant:-8],
+		[noticeRow.topAnchor constraintEqualToAnchor:self.noticeBox.topAnchor constant:8],
+		[noticeRow.bottomAnchor constraintEqualToAnchor:self.noticeBox.bottomAnchor constant:-8],
+	]];
 	self.noticeBox.hidden = YES;
 	[self addFull:self.noticeBox to:root inset:12];
 
