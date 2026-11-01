@@ -27,6 +27,7 @@ func TestTail(t *testing.T) {
 	if got := Tail("short", 200); got != "short" {
 		t.Fatalf("Tail short = %q", got)
 	}
+
 	got := Tail("alpha beta gamma delta", 10)
 	if got != "delta" && got != "gamma delta" {
 		t.Fatalf("Tail should start on a word boundary, got %q", got)
@@ -37,10 +38,12 @@ func TestPrompt(t *testing.T) {
 	if got := Prompt("  Kubernetes,\n bvoice ", ""); got != "Kubernetes, bvoice" {
 		t.Fatalf("vocab only = %q", got)
 	}
+
 	if got := Prompt("", "Previous text."); got != "Previous text." {
 		t.Fatalf("previous only = %q", got)
 	}
-	if got := Prompt("Jira", "We filed it."); got != "Jira We filed it." {
+
+	if got := Prompt("PostgreSQL", "We migrated it."); got != "PostgreSQL We migrated it." {
 		t.Fatalf("both = %q", got)
 	}
 }

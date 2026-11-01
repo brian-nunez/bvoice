@@ -34,20 +34,25 @@ func Load(data []byte, verbose bool) (*Model, error) {
 	if len(data) == 0 {
 		return nil, errors.New("no Whisper model is embedded in this binary; build it with `make build MODEL=...`")
 	}
+
 	if verbose {
 		C.bv_set_logging(1)
 	} else {
 		C.bv_set_logging(0)
 	}
+
 	params := C.whisper_context_default_params()
+
 	ctx := C.whisper_init_from_buffer_with_params(unsafe.Pointer(&data[0]), C.size_t(len(data)), params)
 	if ctx == nil {
 		return nil, errors.New("whisper.cpp could not load the embedded model")
 	}
+
 	threads := runtime.NumCPU()
 	if threads > 8 {
 		threads = 8
 	}
+
 	return &Model{ctx: ctx, threads: threads}, nil
 }
 
@@ -57,15 +62,19 @@ func (m *Model) Transcribe(samples []float32, prompt string) (string, error) {
 	if len(samples) == 0 {
 		return "", nil
 	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if m.ctx == nil {
 		return "", errors.New("model is closed")
 	}
 
 	p := C.whisper_full_default_params(C.WHISPER_SAMPLING_GREEDY)
+
 	lang := C.CString("en")
 	defer C.free(unsafe.Pointer(lang))
+
 	p.language = lang
 	p.n_threads = C.int(m.threads)
 	p.no_context = C.bool(true)
@@ -76,20 +85,25 @@ func (m *Model) Transcribe(samples []float32, prompt string) (string, error) {
 	p.print_progress = C.bool(false)
 	p.print_realtime = C.bool(false)
 	p.print_timestamps = C.bool(false)
+
 	if prompt = strings.TrimSpace(prompt); prompt != "" {
 		cPrompt := C.CString(prompt)
 		defer C.free(unsafe.Pointer(cPrompt))
+
 		p.initial_prompt = cPrompt
 	}
 
 	if C.whisper_full(m.ctx, p, (*C.float)(unsafe.Pointer(&samples[0])), C.int(len(samples))) != 0 {
 		return "", errors.New("whisper.cpp transcription failed")
 	}
+
 	var b strings.Builder
+
 	n := int(C.whisper_full_n_segments(m.ctx))
 	for i := 0; i < n; i++ {
 		b.WriteString(C.GoString(C.whisper_full_get_segment_text(m.ctx, C.int(i))))
 	}
+
 	return b.String(), nil
 }
 
@@ -97,6 +111,7 @@ func (m *Model) Transcribe(samples []float32, prompt string) (string, error) {
 func (m *Model) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if m.ctx != nil {
 		C.whisper_free(m.ctx)
 		m.ctx = nil

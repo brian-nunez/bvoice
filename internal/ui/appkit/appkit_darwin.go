@@ -66,11 +66,14 @@ var _ ui.UI = (*UI)(nil)
 // Run must be called from the main goroutine. It returns after Stop.
 func (u *UI) Run(a ui.Actions, showWindow bool, ready func()) error {
 	actions, onReady = a, ready
+
 	show := 0
 	if showWindow {
 		show = 1
 	}
+
 	C.bv_ui_run(C.int(show))
+
 	return nil
 }
 
@@ -79,37 +82,48 @@ func (u *UI) send(what int, v any) {
 	if err != nil {
 		return
 	}
+
 	cs := C.CString(string(b))
 	defer C.free(unsafe.Pointer(cs))
+
 	C.bv_ui_set_json(C.int(what), cs)
 }
 
+// SetStatus updates the menu bar icon and the window header.
 func (u *UI) SetStatus(s ui.Status) { u.send(setStatus, s) }
 
+// SetHistory replaces the rows in the History tab.
 func (u *UI) SetHistory(h []ui.HistoryItem) {
 	if h == nil {
 		h = []ui.HistoryItem{}
 	}
+
 	u.send(setHistory, h)
 }
 
+// SetControls rebuilds the Settings tab.
 func (u *UI) SetControls(c []ui.Control) { u.send(setControls, c) }
 
+// SetSyncNotice shows the sync notice for the given changes, or hides it when there are none.
 func (u *UI) SetSyncNotice(ch []settings.Change) {
 	if ch == nil {
 		ch = []settings.Change{}
 	}
+
 	u.send(setNotice, ch)
 }
 
+// SetOnTop keeps the window above other windows when on is true.
 func (u *UI) SetOnTop(on bool) {
 	v := 0
 	if on {
 		v = 1
 	}
+
 	C.bv_ui_set_on_top(C.int(v))
 }
 
+// Stop ends the AppKit run loop, which makes Run return.
 func (u *UI) Stop() { C.bv_ui_stop() }
 
 //export goUIReady
@@ -124,10 +138,12 @@ func goUIReady() {
 //export goUIAction
 func goUIAction(kind C.int, ckey, cval *C.char) {
 	key, val := C.GoString(ckey), C.GoString(cval)
+
 	a := actions
 	if a == nil {
 		return
 	}
+
 	go func() {
 		switch int(kind) {
 		case actToggle:

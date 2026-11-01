@@ -1,6 +1,6 @@
-// Package ui is the contract between the controller and a UI toolkit (PLAN.md §6).
+// Package ui is the contract between the controller and a UI toolkit.
 // The controller pushes view models in; the UI sends user actions back through Actions.
-// A toolkit (AppKit today, something else on Linux later) implements UI in its own package.
+// Each toolkit (ui/appkit on macOS) implements UI in its own package.
 package ui
 
 import "github.com/brian-nunez/bvoice/internal/settings"
@@ -8,6 +8,7 @@ import "github.com/brian-nunez/bvoice/internal/settings"
 // Phase is the dictation state.
 type Phase string
 
+// Dictation phases.
 const (
 	Idle      Phase = "idle"
 	Listening Phase = "listening"
@@ -27,7 +28,7 @@ type Status struct {
 // HistoryItem is one row in the history list.
 type HistoryItem struct {
 	ID      int64  `json:"id"`
-	Time    string `json:"time"`    // e.g. "Oct 31 22:58"
+	Time    string `json:"time"`    // e.g. "Jan 2 15:04"
 	Meta    string `json:"meta"`    // e.g. "small.en-q5_1 · 0:42 · ready in 0.9s"
 	Preview string `json:"preview"` // first line(s) of the text
 }

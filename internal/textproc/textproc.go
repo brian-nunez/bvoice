@@ -17,24 +17,28 @@ func Clean(raw string) string {
 // Join concatenates cleaned chunk texts into one transcript.
 func Join(parts []string) string {
 	var out []string
+
 	for _, p := range parts {
 		if p = Clean(p); p != "" {
 			out = append(out, p)
 		}
 	}
+
 	return strings.Join(out, " ")
 }
 
-// Tail returns roughly the last max characters of s, starting at a word boundary.
-func Tail(s string, max int) string {
+// Tail returns roughly the last n characters of s, starting at a word boundary.
+func Tail(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= max {
+	if len(s) <= n {
 		return s
 	}
-	cut := s[len(s)-max:]
+
+	cut := s[len(s)-n:]
 	if i := strings.IndexByte(cut, ' '); i >= 0 && i < len(cut)-1 {
 		cut = cut[i+1:]
 	}
+
 	return cut
 }
 
@@ -45,8 +49,10 @@ func Prompt(vocabulary, previous string) string {
 	if v := strings.Join(strings.Fields(vocabulary), " "); v != "" {
 		parts = append(parts, v)
 	}
+
 	if t := Tail(previous, 200); t != "" {
 		parts = append(parts, t)
 	}
+
 	return strings.Join(parts, " ")
 }

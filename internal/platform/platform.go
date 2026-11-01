@@ -2,7 +2,7 @@
 // clipboard and sounds. Each OS provides New in its own file (platform_darwin.go, …).
 package platform
 
-// Hotkey watches for a quick tap of a single modifier key (PLAN.md §3.2).
+// Hotkey watches for a quick tap of a single modifier key.
 type Hotkey interface {
 	// Watch starts watching key and calls onTap (from a background goroutine) for each tap.
 	Watch(key string, onTap func()) error
@@ -19,6 +19,7 @@ type Clipboard interface {
 // Sound identifies a feedback sound.
 type Sound int
 
+// Feedback sounds.
 const (
 	SoundStart Sound = iota // listening started
 	SoundDone               // text is ready

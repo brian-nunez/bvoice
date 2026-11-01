@@ -76,10 +76,12 @@ func New(cfg Config) *Controller {
 	if l == nil {
 		l = log.New(os.Stderr, "bvoice: ", log.LstdFlags)
 	}
+
 	ov := settings.Overrides{}
 	for k, v := range cfg.Overrides {
 		ov[k] = v
 	}
+
 	return &Controller{
 		cfg:       cfg,
 		log:       l,
@@ -94,6 +96,7 @@ func New(cfg Config) *Controller {
 func (c *Controller) Settings() settings.Settings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.eff
 }
 
@@ -107,19 +110,20 @@ func (c *Controller) Start() error {
 	c.pushControls()
 	c.pushNotice()
 	c.refreshHistory()
+
 	if err := c.cfg.Platform.Hotkey.Watch(eff.Hotkey, c.ToggleRecording); err != nil {
 		return fmt.Errorf("hotkey: %w", err)
 	}
+
 	return nil
 }
-
-// ---------------------------------------------------------------------------------- dictation
 
 // ToggleRecording starts listening when idle and stops when listening. Ignored while finishing.
 func (c *Controller) ToggleRecording() {
 	c.mu.Lock()
 	phase := c.phase
 	c.mu.Unlock()
+
 	switch phase {
 	case ui.Idle:
 		c.startListening()
@@ -146,8 +150,10 @@ func (c *Controller) startListening() {
 	c.mu.Lock()
 	if c.phase != ui.Idle {
 		c.mu.Unlock()
+
 		return
 	}
+
 	eff := c.eff
 	s := &session{
 		started: time.Now(),
@@ -164,21 +170,26 @@ func (c *Controller) startListening() {
 
 	autoStopMs := eff.AutoStopSec * 1000
 	maxSamples := int64(eff.MaxMinutes) * 60 * audio.SampleRate
+
 	err := c.cfg.Recorder.Start(eff.Mic, func(in []float32) {
 		s.mu.Lock()
 		if s.closed {
 			s.mu.Unlock()
+
 			return
 		}
+
 		s.samples += int64(len(in))
 		for _, ch := range s.chunker.Write(in) {
 			if ch.HasSpeech {
 				s.work <- ch // buffered; the worker drains it while the user talks
 			}
 		}
+
 		silent := s.chunker.TrailingSilenceMs()
 		total := s.samples
 		s.mu.Unlock()
+
 		switch {
 		case autoStopMs > 0 && silent >= autoStopMs:
 			c.autoStop(s, fmt.Sprintf("Stopped after %ds of silence.", eff.AutoStopSec))
@@ -196,8 +207,10 @@ func (c *Controller) startListening() {
 		c.mu.Unlock()
 		c.play(platform.SoundError)
 		c.pushStatus()
+
 		return
 	}
+
 	c.play(platform.SoundStart)
 	c.pushStatus()
 	c.log.Printf("listening (mic %q)", eff.Mic)
@@ -213,6 +226,7 @@ func (c *Controller) stopListening(reason string) {
 	c.mu.Lock()
 	s := c.sess
 	c.mu.Unlock()
+
 	if s != nil && s.stopping.CompareAndSwap(false, true) {
 		c.finish(s, reason)
 	}
@@ -221,24 +235,31 @@ func (c *Controller) stopListening(reason string) {
 // worker transcribes chunks in order while the user keeps talking.
 func (c *Controller) worker(s *session, vocab string) {
 	defer close(s.done)
+
 	var sofar string
+
 	for ch := range s.work {
 		t0 := time.Now()
+
 		raw, err := c.cfg.Model.Transcribe(ch.Samples, textproc.Prompt(vocab, sofar))
 		if err != nil {
 			c.log.Printf("transcribe chunk at %dms: %v", ch.StartMs, err)
+
 			continue
 		}
+
 		if txt := textproc.Clean(raw); txt != "" {
 			s.parts = append(s.parts, txt)
 			sofar = strings.Join(s.parts, " ")
 		}
+
 		c.log.Printf("chunk %.1fs at %dms transcribed in %v", float64(len(ch.Samples))/audio.SampleRate, ch.StartMs, time.Since(t0).Round(time.Millisecond))
 	}
 }
 
 func (c *Controller) finish(s *session, reason string) {
 	stopAt := time.Now()
+
 	c.mu.Lock()
 	c.phase = ui.Finishing
 	eff := c.eff
@@ -248,11 +269,14 @@ func (c *Controller) finish(s *session, reason string) {
 	if err := c.cfg.Recorder.Stop(); err != nil {
 		c.log.Printf("stop recording: %v", err)
 	}
+
 	s.mu.Lock()
+
 	s.closed = true // late audio callbacks (if any) are ignored from here on
 	if last, ok := s.chunker.Flush(); ok && last.HasSpeech {
 		s.work <- last
 	}
+
 	audioMs := s.samples * 1000 / audio.SampleRate
 	close(s.work)
 	s.mu.Unlock()
@@ -260,6 +284,7 @@ func (c *Controller) finish(s *session, reason string) {
 
 	text := textproc.Join(s.parts)
 	latency := time.Since(stopAt)
+
 	msg := reason
 	if text == "" {
 		if msg == "" {
@@ -270,12 +295,15 @@ func (c *Controller) finish(s *session, reason string) {
 		if eff.TrailingSpace {
 			out += " "
 		}
+
 		if eff.AutoCopy {
 			if err := c.cfg.Platform.Clipboard.SetText(out); err != nil {
 				c.log.Printf("clipboard: %v", err)
+
 				msg = "Could not copy to the clipboard."
 			}
 		}
+
 		_, err := c.cfg.Store.AddTranscription(history.Entry{
 			CreatedAt: s.started, Model: c.cfg.ModelName, AudioMs: audioMs,
 			LatencyMs: latency.Milliseconds(), Text: text,
@@ -283,15 +311,18 @@ func (c *Controller) finish(s *session, reason string) {
 		if err != nil {
 			c.log.Printf("save history: %v", err)
 		}
+
 		c.log.Printf("done: %d chars from %.1fs of audio, ready %v after stop", len(text), float64(audioMs)/1000, latency.Round(time.Millisecond))
 	}
 
 	c.mu.Lock()
 	c.phase, c.sess, c.message = ui.Idle, nil, msg
 	c.mu.Unlock()
+
 	if text != "" {
 		c.play(platform.SoundDone)
 	}
+
 	c.pushStatus()
 	c.refreshHistory()
 }
@@ -300,24 +331,26 @@ func (c *Controller) play(s platform.Sound) {
 	c.mu.Lock()
 	eff := c.eff
 	c.mu.Unlock()
+
 	if eff.Sounds {
 		c.cfg.Platform.Sounds.Play(s, eff.SoundVolume)
 	}
 }
 
-// ---------------------------------------------------------------------------------- settings
-
-// SetSetting saves a change made in the UI and applies it to the running session (PLAN.md §3.3).
+// SetSetting saves a change made in the UI and applies it immediately.
 func (c *Controller) SetSetting(key, value string) {
 	c.mu.Lock()
+
 	saved, eff := c.saved, c.eff
 	if err := saved.Set(key, value); err != nil {
 		c.message = err.Error()
 		c.mu.Unlock()
 		c.pushStatus()
 		c.pushControls() // revert the control to the effective value
+
 		return
 	}
+
 	_ = eff.Set(key, value)
 	oldEff := c.eff
 	c.saved, c.eff = saved, eff
@@ -328,11 +361,13 @@ func (c *Controller) SetSetting(key, value string) {
 	if err := c.cfg.Store.SaveSettings(map[string]string{key: mustGet(saved, key)}); err != nil {
 		c.log.Printf("save setting %s: %v", key, err)
 	}
+
 	switch key {
 	case "hotkey":
 		if err := c.cfg.Platform.Hotkey.SetKey(eff.Hotkey); err != nil {
 			c.log.Printf("hotkey: %v", err)
 		}
+
 		c.pushStatus()
 	case "on-top":
 		c.cfg.UI.SetOnTop(eff.OnTop)
@@ -341,9 +376,11 @@ func (c *Controller) SetSetting(key, value string) {
 			if err := c.cfg.Store.Prune(eff.HistoryLimit); err != nil {
 				c.log.Printf("prune: %v", err)
 			}
+
 			c.refreshHistory()
 		}
 	}
+
 	c.pushNotice()
 }
 
@@ -354,18 +391,19 @@ func (c *Controller) SyncFlags() {
 	c.overrides = settings.Overrides{}
 	saved := c.saved
 	c.mu.Unlock()
+
 	if err := c.cfg.Store.SaveSettings(saved.ToMap()); err != nil {
 		c.log.Printf("sync settings: %v", err)
 	}
+
 	c.pushNotice()
 }
 
 func mustGet(s settings.Settings, key string) string {
 	v, _ := s.Get(key)
+
 	return v
 }
-
-// ---------------------------------------------------------------------------------- history
 
 // Search filters the history list.
 func (c *Controller) Search(query string) {
@@ -380,19 +418,24 @@ func (c *Controller) CopyEntry(id int64) {
 	e, err := c.cfg.Store.Get(id)
 	if err != nil {
 		c.log.Printf("copy entry %d: %v", id, err)
+
 		return
 	}
+
 	c.mu.Lock()
 	trailing := c.eff.TrailingSpace
 	c.mu.Unlock()
+
 	text := e.Text
 	if trailing {
 		text += " "
 	}
+
 	msg := "Copied to the clipboard."
 	if err := c.cfg.Platform.Clipboard.SetText(text); err != nil {
 		msg = "Could not copy to the clipboard."
 	}
+
 	c.mu.Lock()
 	c.message = msg
 	c.mu.Unlock()
@@ -408,11 +451,14 @@ func (c *Controller) Export(path string) {
 			err = cerr
 		}
 	}
+
 	msg := "History exported."
+
 	if err != nil {
 		c.log.Printf("export: %v", err)
 		msg = "Export failed: " + err.Error()
 	}
+
 	c.mu.Lock()
 	c.message = msg
 	c.mu.Unlock()
@@ -424,6 +470,7 @@ func (c *Controller) ClearHistory() {
 	if err := c.cfg.Store.ClearHistory(); err != nil {
 		c.log.Printf("clear history: %v", err)
 	}
+
 	c.refreshHistory()
 }
 
@@ -436,23 +483,25 @@ func (c *Controller) Quit() {
 	}()
 }
 
-// ---------------------------------------------------------------------------------- view models
-
 const historyRows = 200
 
 func (c *Controller) refreshHistory() {
 	c.mu.Lock()
 	q := c.query
 	c.mu.Unlock()
+
 	entries, err := c.cfg.Store.History(q, historyRows)
 	if err != nil {
 		c.log.Printf("load history: %v", err)
+
 		return
 	}
+
 	items := make([]ui.HistoryItem, 0, len(entries))
 	for _, e := range entries {
 		items = append(items, HistoryItem(e))
 	}
+
 	c.cfg.UI.SetHistory(items)
 }
 
@@ -460,15 +509,18 @@ func (c *Controller) refreshHistory() {
 func HistoryItem(e history.Entry) ui.HistoryItem {
 	secs := e.AudioMs / 1000
 	meta := fmt.Sprintf("%s · %d:%02d · ready in %.1fs", e.Model, secs/60, secs%60, float64(e.LatencyMs)/1000)
+
 	preview := strings.Join(strings.Fields(e.Text), " ")
 	if r := []rune(preview); len(r) > 140 {
 		preview = string(r[:140]) + "…"
 	}
+
 	return ui.HistoryItem{ID: e.ID, Time: e.CreatedAt.Format("Jan 2 15:04"), Meta: meta, Preview: preview}
 }
 
 func (c *Controller) pushStatus() {
 	c.mu.Lock()
+
 	st := ui.Status{
 		Phase: c.phase, Model: c.cfg.ModelName, Version: c.cfg.Version,
 		Hotkey: c.eff.Hotkey, Message: c.message,
@@ -493,6 +545,7 @@ func (c *Controller) pushControls() {
 	c.mu.Unlock()
 
 	mics := []ui.Choice{{Value: "", Label: "System default"}}
+
 	if devs, err := c.cfg.Recorder.Devices(); err == nil {
 		for _, d := range devs {
 			mics = append(mics, ui.Choice{Value: d.Name, Label: d.Name})
@@ -516,8 +569,10 @@ func (c *Controller) pushControls() {
 				ctl.Choices = append(ctl.Choices, ui.Choice{Value: ch, Label: ch})
 			}
 		}
+
 		controls = append(controls, ctl)
 	}
+
 	c.cfg.UI.SetControls(controls)
 }
 
@@ -526,11 +581,13 @@ func HotkeyLabel(h string) string {
 	if h == "fn" {
 		return "Fn"
 	}
+
 	words := strings.Split(h, "_")
 	for i, w := range words {
 		if w != "" {
 			words[i] = strings.ToUpper(w[:1]) + w[1:]
 		}
 	}
+
 	return strings.Join(words, " ")
 }

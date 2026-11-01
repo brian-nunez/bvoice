@@ -4,7 +4,7 @@ package vad
 
 import "math"
 
-// Config tunes the chunker. These are internal constants, not user options (PLAN.md §4).
+// Config tunes the chunker. These are internal constants, not user options.
 type Config struct {
 	SampleRate    int     // samples per second (16000)
 	FrameMs       int     // analysis frame length
@@ -69,28 +69,33 @@ func (c *Chunker) ms(frames int) int { return frames * c.cfg.FrameMs }
 // Write feeds samples and returns any chunks completed by them.
 func (c *Chunker) Write(samples []float32) []Chunk {
 	var out []Chunk
+
 	c.pending = append(c.pending, samples...)
 	for len(c.pending) >= c.frameLen {
 		frame := c.pending[:c.frameLen]
 		if ch, ok := c.frame(frame); ok {
 			out = append(out, ch)
 		}
+
 		c.pending = c.pending[c.frameLen:]
 	}
 	// keep pending from pinning a large backing array
 	if cap(c.pending) > 4*c.frameLen {
 		c.pending = append([]float32(nil), c.pending...)
 	}
+
 	return out
 }
 
 // Flush emits whatever is buffered (including a partial frame) as a final chunk.
 func (c *Chunker) Flush() (Chunk, bool) {
 	c.cur = append(c.cur, c.pending...)
+
 	c.pending = nil
 	if len(c.cur) == 0 {
 		return Chunk{}, false
 	}
+
 	return c.emit(len(c.cur)), true
 }
 
@@ -102,12 +107,14 @@ func (c *Chunker) frame(frame []float32) (Chunk, bool) {
 	for _, s := range frame {
 		sum += float64(s) * float64(s)
 	}
+
 	r := math.Sqrt(sum / float64(len(frame)))
 
 	isSpeech := r > math.Max(c.cfg.MinRMS, c.noiseFloor(r)*c.cfg.NoiseFactor)
 
 	c.cur = append(c.cur, frame...)
 	c.speech = append(c.speech, isSpeech)
+
 	c.rms = append(c.rms, r)
 	if isSpeech {
 		c.silentRun, c.trailing = 0, 0
@@ -133,8 +140,10 @@ func (c *Chunker) frame(frame []float32) (Chunk, bool) {
 				best = i
 			}
 		}
+
 		return c.emit((best + 1) * c.frameLen), true
 	}
+
 	return Chunk{}, false
 }
 
@@ -144,12 +153,15 @@ func (c *Chunker) emit(n int) Chunk {
 	if framesOut > len(c.speech) {
 		framesOut = len(c.speech)
 	}
+
 	speechOut := 0
+
 	for _, s := range c.speech[:framesOut] {
 		if s {
 			speechOut++
 		}
 	}
+
 	ch := Chunk{
 		Samples:   append([]float32(nil), c.cur[:n]...),
 		HasSpeech: c.ms(speechOut) >= c.cfg.MinSpeechMs,
@@ -160,6 +172,7 @@ func (c *Chunker) emit(n int) Chunk {
 	c.speech = append([]bool(nil), c.speech[framesOut:]...)
 	c.rms = append([]float64(nil), c.rms[framesOut:]...)
 	c.recount()
+
 	return ch
 }
 
@@ -168,6 +181,7 @@ func (c *Chunker) drop(n int) {
 	if n <= 0 {
 		return
 	}
+
 	c.consumed += int64(n * c.frameLen)
 	c.cur = append([]float32(nil), c.cur[n*c.frameLen:]...)
 	c.speech = append([]bool(nil), c.speech[n:]...)
@@ -182,16 +196,19 @@ func (c *Chunker) noiseFloor(r float64) float64 {
 	if n < 1 {
 		n = 1
 	}
+
 	if len(c.history) < n {
 		c.history = append(c.history, r)
 	} else {
 		c.history[c.histPos] = r
 		c.histPos = (c.histPos + 1) % n
 	}
+
 	floor := c.history[0]
 	for _, v := range c.history[1:] {
 		floor = math.Min(floor, v)
 	}
+
 	return floor
 }
 

@@ -9,7 +9,7 @@ import (
 	"github.com/brian-nunez/bvoice/internal/ui"
 )
 
-// A Linux UI goes in its own package and is returned here (PLAN.md §6).
+// Other platforms return their ui.UI implementation here (see docs/architecture.md).
 func newUI() (ui.UI, error) {
-	return nil, errors.New("bvoice has no UI for " + runtime.GOOS + " yet")
+	return nil, errors.New("bvoice has no UI for " + runtime.GOOS)
 }

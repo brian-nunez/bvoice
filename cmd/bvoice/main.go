@@ -1,5 +1,5 @@
 // Command bvoice is local push-to-talk dictation: tap a modifier key, talk, tap again, and the text
-// is on your clipboard. One binary per Whisper model; see PLAN.md.
+// is on your clipboard. One binary per Whisper model; see docs/architecture.md.
 package main
 
 import (
@@ -34,30 +34,39 @@ func run(args []string) int {
 	dataDir := fs.String("data-dir", "", "folder for the settings and history database (default ~/Library/Application Support/bvoice)")
 	verbose := fs.Bool("verbose", false, "log details to stderr")
 	showVersion := fs.Bool("version", false, "print the version and embedded model, then exit")
+
 	fs.Usage = func() {
-		out := fs.Output()
-		fmt.Fprintf(out, "bvoice %s (model %s) — tap a key, talk, tap again; the text lands on your clipboard.\n\n", version, modelName)
-		fmt.Fprintf(out, "Usage: ./bvoice [flags]\n\n")
-		fmt.Fprintf(out, "Flags change settings for this run only; the window offers to save them.\n\n")
+		_, _ = fmt.Fprintf(fs.Output(),
+			"bvoice %s (model %s) — tap a key, talk, tap again; the text lands on your clipboard.\n\n"+
+				"Usage: ./bvoice [flags]\n\n"+
+				"Flags change settings for this run only; the window offers to save them.\n\n",
+			version, modelName)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
+
 		return 2
 	}
+
 	if fs.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "bvoice: unexpected argument %q (see --help)\n", fs.Arg(0))
+
 		return 2
 	}
+
 	if *showVersion {
 		fmt.Printf("bvoice %s (model %s)\n", version, modelName)
+
 		return 0
 	}
+
 	overrides, err := settings.Collect(fs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bvoice: %v\n", err)
+
 		return 2
 	}
 
@@ -65,8 +74,10 @@ func run(args []string) int {
 	if *verbose {
 		logger = log.New(os.Stderr, "bvoice: ", log.Ltime|log.Lmicroseconds)
 	}
+
 	fail := func(format string, a ...any) int {
 		fmt.Fprintf(os.Stderr, "bvoice: "+format+"\n", a...)
+
 		return 1
 	}
 
@@ -76,15 +87,18 @@ func run(args []string) int {
 			return fail("find data folder: %v", err)
 		}
 	}
+
 	db, err := store.Open(dir)
 	if err != nil {
 		return fail("open database in %s: %v", dir, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
+
 	stored, err := db.LoadSettings()
 	if err != nil {
 		return fail("load settings: %v", err)
 	}
+
 	saved, warnings := settings.FromMap(stored)
 	for _, w := range warnings {
 		fmt.Fprintf(os.Stderr, "bvoice: saved setting %s\n", w)
@@ -94,10 +108,12 @@ func run(args []string) int {
 	if err != nil {
 		return fail("%v", err)
 	}
+
 	ui, err := newUI()
 	if err != nil {
 		return fail("%v", err)
 	}
+
 	recorder, err := mic.NewMic()
 	if err != nil {
 		return fail("%v", err)
@@ -105,11 +121,13 @@ func run(args []string) int {
 	defer recorder.Close()
 
 	t0 := time.Now()
+
 	m, err := whisper.Load(model.Data, *verbose)
 	if err != nil {
 		return fail("%v", err)
 	}
 	defer m.Close()
+
 	logger.Printf("loaded model %s in %v; data in %s", modelName, time.Since(t0).Round(time.Millisecond), dir)
 
 	ctl := app.New(app.Config{
@@ -122,6 +140,7 @@ func run(args []string) int {
 		version, modelName, app.HotkeyLabel(eff.Hotkey))
 
 	var startErr error
+
 	err = ui.Run(ctl, eff.ShowWindow, func() {
 		if startErr = ctl.Start(); startErr != nil {
 			ui.Stop()
@@ -130,8 +149,10 @@ func run(args []string) int {
 	if err != nil {
 		return fail("%v", err)
 	}
+
 	if startErr != nil {
 		return fail("%v", startErr)
 	}
+
 	return 0
 }

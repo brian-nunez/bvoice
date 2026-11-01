@@ -1,5 +1,4 @@
-# bvoice build. Run on the Mac you'll use it on (see PLAN.md §7).
-# Needs only make, Xcode Command Line Tools (clang) and Go — no CMake.
+# bvoice build. Requires make, the Xcode Command Line Tools (clang) and Go.
 #
 #   make build MODEL=small.en-q5_1  one binary with that model embedded -> dist/bvoice-<model>
 #   make all                        build every model in MODELS
@@ -30,7 +29,7 @@ NPROC   := $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.modelName=$(MODEL)
 
-.PHONY: all deps lib model build test vet release clean
+.PHONY: all deps lib model build test vet lint fmt release clean
 
 all:
 	@for m in $(MODELS); do $(MAKE) --no-print-directory build MODEL=$$m || exit 1; done
@@ -42,17 +41,16 @@ go.sum: go.mod
 	go mod tidy
 	@touch go.sum
 
-# ---------------------------------------------------------------------------------- whisper.cpp
-# whisper.cpp is fetched at a pinned commit and compiled with plain compiler rules that mirror its
-# CMake build (same files, defines and embedded Metal shaders) into one static library.
+# whisper.cpp is fetched at a pinned commit and compiled into one static library, with the Metal
+# shaders embedded in it.
 
-$(WHISPER_DIR)/CMakeLists.txt:
+$(WHISPER_DIR)/include/whisper.h:
 	mkdir -p $(WHISPER_DIR)
 	git -C $(WHISPER_DIR) init -q
 	git -C $(WHISPER_DIR) fetch -q --depth 1 $(WHISPER_REPO) $(WHISPER_COMMIT)
 	git -C $(WHISPER_DIR) checkout -q FETCH_HEAD
 
-lib: $(WHISPER_DIR)/CMakeLists.txt
+lib: $(WHISPER_DIR)/include/whisper.h
 	@$(MAKE) --no-print-directory -j$(NPROC) $(WHISPER_LIB)
 
 ifeq ($(origin CXX),default)
@@ -92,7 +90,7 @@ endif
 METAL_SRC := $(addprefix ggml/src/ggml-metal/,ggml-metal.cpp ggml-metal-device.m ggml-metal-device.cpp \
 	ggml-metal-common.cpp ggml-metal-context.m ggml-metal-fusion.cpp ggml-metal-ops.cpp ggml-metal-tuning.cpp)
 BLAS_SRC  := ggml/src/ggml-blas/ggml-blas.cpp
-# every kernel except the two that are only included by others (matches the CMake list)
+# every kernel except the two that are only included by others
 METAL_KERNELS := $(filter-out fa_common fa_vec_common,$(basename $(notdir $(wildcard $(GGML)/ggml-metal/kernels/*.metal))))
 METAL_EMBED   := $(addprefix $(OBJ)/metal/,$(addsuffix .s.o,$(METAL_KERNELS)))
 else
@@ -108,7 +106,7 @@ METAL_OBJ := $(call objs,$(METAL_SRC))
 BLAS_OBJ  := $(call objs,$(BLAS_SRC))
 ALL_OBJ   := $(BASE_OBJ) $(REG_OBJ) $(CPU_OBJ) $(WHI_OBJ) $(METAL_OBJ) $(BLAS_OBJ) $(METAL_EMBED)
 
-# per-group flags, as in whisper.cpp's CMake targets
+# per-group compile flags
 $(REG_OBJ):   EXTRA := $(W_USE)
 $(CPU_OBJ):   EXTRA := $(CPU_DEFS) $(CPU_ARCH)
 $(WHI_OBJ):   EXTRA := $(W_USE) -DWHISPER_VERSION=\"$(WHISPER_VERSION)\"
@@ -136,8 +134,8 @@ $(OBJ)/%.m.o: $(WHISPER_DIR)/%.m $(OBJ)/ggml-version.h
 	@mkdir -p $(dir $@)
 	$(CC) -O3 -fPIC -w $(W_DEFS) $(EXTRA) $(W_INC) -c $< -o $@
 
-# Metal shaders embedded in the binary: each kernel is flattened with its headers (as in
-# ggml-metal/CMakeLists.txt) and wrapped in an assembly file that .incbin's it.
+# Metal shaders embedded in the binary: each kernel is flattened with its headers and wrapped in an
+# assembly file that .incbin's it.
 $(OBJ)/metal/%.s: $(GGML)/ggml-metal/kernels/%.metal $(GGML)/ggml-common.h $(GGML)/ggml-metal/ggml-metal-impl.h
 	@mkdir -p $(dir $@)
 	@K=$(GGML)/ggml-metal/kernels; H="$$K/common.h"; \
@@ -156,8 +154,6 @@ $(OBJ)/metal/%.s: $(GGML)/ggml-metal/kernels/%.metal $(GGML)/ggml-common.h $(GGM
 
 $(OBJ)/metal/%.s.o: $(OBJ)/metal/%.s
 	$(CC) -c $< -o $@
-
-# ---------------------------------------------------------------------------------- bvoice
 
 model: $(MODEL_FILE)
 
@@ -178,6 +174,13 @@ test: deps
 
 vet: deps
 	CGO_ENABLED=1 go vet ./...
+
+# Linters and formatters are configured in .golangci.yml (golangci-lint v2).
+lint: deps
+	CGO_ENABLED=1 golangci-lint run ./...
+
+fmt:
+	golangci-lint fmt ./...
 
 release:
 	@test -n "$(TAG)" || { echo "usage: make release TAG=v0.1.0"; exit 1; }

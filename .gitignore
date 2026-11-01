@@ -5,3 +5,6 @@
 # model copied in by the Makefile at build time
 /internal/model/model.bin
 .DS_Store
+# local Go workspace overrides
+/go.work
+/go.work.sum

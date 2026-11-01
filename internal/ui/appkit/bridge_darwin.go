@@ -15,7 +15,7 @@ package appkit
 extern void goUIReady(void);
 extern void goUIAction(int kind, char *ckey, char *cval);
 
-// ---- must match appkit_darwin.go
+// Must match the constants in appkit_darwin.go.
 enum { BVSetStatus = 1, BVSetHistory = 2, BVSetControls = 3, BVSetNotice = 4 };
 enum { BVToggle = 1, BVSetting = 2, BVSearch = 3, BVCopy = 4, BVExport = 5, BVClear = 6, BVSync = 7, BVQuit = 8 };
 
@@ -43,7 +43,7 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	return l;
 }
 
-// ---- panel: Esc hides it; it can take key focus (for search/settings) without activating the app
+// BVPanel hides on Esc and can take key focus (for search and settings) without activating the app.
 
 @interface BVPanel : NSPanel
 @end
@@ -57,8 +57,6 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 @implementation BVFlipped
 - (BOOL)isFlipped { return YES; }
 @end
-
-// ---- controller
 
 @interface BVController : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
 @property(strong) NSStatusItem *statusItem;
@@ -152,7 +150,7 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	buttons.spacing = 8;
 	[root addArrangedSubview:buttons];
 
-	// "started with different options" notice (PLAN.md §3.3)
+	// notice shown when launch flags differ from the saved settings
 	self.noticeBox = [[NSBox alloc] init];
 	self.noticeBox.boxType = NSBoxCustom;
 	self.noticeBox.cornerRadius = 6;
@@ -203,8 +201,6 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	[main addItem:editItem];
 	NSApp.mainMenu = main;
 }
-
-// ---- history tab
 
 - (NSView *)buildHistoryView {
 	NSStackView *v = [NSStackView stackViewWithViews:@[]];
@@ -317,8 +313,6 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	}];
 }
 
-// ---- settings tab
-
 - (NSView *)buildSettingsView {
 	NSScrollView *scroll = [[NSScrollView alloc] init];
 	scroll.hasVerticalScroller = YES;
@@ -400,7 +394,7 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 			NSTextField *f = [NSTextField textFieldWithString:value];
 			f.identifier = key;
 			f.toolTip = help;
-			f.placeholderString = @"e.g. Jira, Kubernetes, bvoice";
+			f.placeholderString = @"e.g. Kubernetes, PostgreSQL, bvoice";
 			f.usesSingleLineMode = NO;
 			f.cell.wraps = YES;
 			f.cell.scrollable = NO;
@@ -430,8 +424,6 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 - (void)popupChanged:(NSPopUpButton *)sender {
 	bv_send(BVSetting, sender.identifier, sender.selectedItem.representedObject ?: @"");
 }
-
-// ---- status / notice
 
 - (void)setStatusDict:(NSDictionary *)st {
 	self.status = st;
@@ -504,8 +496,6 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 	self.panel.level = on ? NSFloatingWindowLevel : NSNormalWindowLevel;
 }
 
-// ---- actions
-
 - (void)statusClicked:(id)sender {
 	NSEvent *e = NSApp.currentEvent;
 	if (e.type == NSEventTypeRightMouseUp || (e.modifierFlags & NSEventModifierFlagControl)) {
@@ -558,7 +548,7 @@ static NSTextField *bv_label(NSString *text, CGFloat size, BOOL bold, BOOL secon
 
 @end
 
-// ---- C entry points (called from Go)
+// C entry points called from Go.
 
 static BVController *gUI;
 

@@ -7,8 +7,8 @@ import (
 	"runtime"
 )
 
-// New is not implemented yet on this OS. A Linux port adds platform_linux.go with its own
-// hotkey, clipboard and sound implementations (PLAN.md §10).
+// New is not implemented on this OS. A port adds platform_<os>.go with its own hotkey,
+// clipboard and sound implementations.
 func New() (Services, error) {
-	return Services{}, errors.New("bvoice does not support " + runtime.GOOS + " yet")
+	return Services{}, errors.New("bvoice does not support " + runtime.GOOS)
 }
