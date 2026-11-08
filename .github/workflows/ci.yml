@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Build whisper.cpp for every Apple silicon Mac rather than the runner's CPU. The release workflow
+  # uses the same value, so it can reuse this job's cached library.
+  CPU_ARCH: -mcpu=apple-m1
+  TEST_MODEL: small.en-q5_1
+
+jobs:
+  check:
+    name: Format, lint, vet and test
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Cache whisper.cpp
+        uses: actions/cache@v6
+        with:
+          path: |
+            third_party/whisper.cpp
+            build/whisper
+          key: whisper-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+
+      - name: Cache test model
+        uses: actions/cache@v6
+        with:
+          path: build/models/ggml-${{ env.TEST_MODEL }}.bin
+          key: model-${{ env.TEST_MODEL }}
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          install-only: true
+
+      - name: Build whisper.cpp
+        run: make lib CPU_ARCH="$CPU_ARCH"
+
+      - name: Format
+        run: make fmt
+
+      - name: Vet
+        run: make vet CPU_ARCH="$CPU_ARCH"
+
+      - name: Lint
+        run: make lint CPU_ARCH="$CPU_ARCH"
+
+      - name: Download test model
+        run: make model MODEL="$TEST_MODEL"
+
+      - name: Test
+        run: |
+          BVOICE_TEST_MODEL="$PWD/build/models/ggml-$TEST_MODEL.bin" CGO_ENABLED=1 go test -race ./...
+
+      - name: Test release scripts
+        run: make test-scripts
+
+      - name: Check for uncommitted changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            git diff
+            echo "::error::Formatting or go mod tidy changed files. Run make fmt and commit the result."
+            exit 1
+          fi

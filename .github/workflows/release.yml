@@ -1,0 +1,115 @@
+name: Release
+
+# Runs after CI passes on a push to main. The next version comes from the Conventional Commits since
+# the last tag (scripts/next-version.sh); when there is nothing to release, the job stops early.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CPU_ARCH: -mcpu=apple-m1
+
+jobs:
+  release:
+    name: Build and publish
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Work out the next version
+        id: version
+        run: |
+          version=$(scripts/next-version.sh)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$version" ]; then
+            echo "::notice::Nothing to release: no feat, fix or other releasable commits since the last tag."
+          elif git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "::error::Tag $version already exists."
+            exit 1
+          else
+            echo "::notice::Releasing $version from $SHA"
+          fi
+
+      - uses: actions/setup-go@v7
+        if: steps.version.outputs.version != ''
+        with:
+          go-version-file: go.mod
+
+      - name: Cache whisper.cpp
+        if: steps.version.outputs.version != ''
+        uses: actions/cache@v6
+        with:
+          path: |
+            third_party/whisper.cpp
+            build/whisper
+          key: whisper-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+
+      - name: Cache small.en-q5_1 model
+        if: steps.version.outputs.version != ''
+        uses: actions/cache@v6
+        with:
+          path: build/models/ggml-small.en-q5_1.bin
+          key: model-small.en-q5_1
+
+      - name: Cache large-v3-turbo-q5_0 model
+        if: steps.version.outputs.version != ''
+        uses: actions/cache@v6
+        with:
+          path: build/models/ggml-large-v3-turbo-q5_0.bin
+          key: model-large-v3-turbo-q5_0
+
+      - name: Build binaries and checksums
+        if: steps.version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: make dist VERSION="$VERSION" CPU_ARCH="$CPU_ARCH"
+
+      - name: Verify binaries
+        if: steps.version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          (cd dist && shasum -a 256 -c SHA256SUMS)
+
+          for bin in dist/bvoice-*; do
+            codesign --verify --strict "$bin"
+            out=$("./$bin" --version)
+            echo "$out"
+
+            case "$out" in
+              "bvoice $VERSION "*) ;;
+              *) echo "::error::$bin reports '$out', expected version $VERSION"; exit 1 ;;
+            esac
+          done
+
+      - name: Create tag and release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$VERSION" dist/bvoice-* dist/SHA256SUMS \
+            --target "$SHA" \
+            --title "bvoice $VERSION" \
+            --generate-notes

@@ -3,8 +3,10 @@
 #   make build MODEL=small.en-q5_1  one binary with that model embedded -> dist/bvoice-<model>
 #   make all                        build every model in MODELS
 #   make test                       run the Go tests
-#   make release TAG=v0.1.0         build all, tag, push the tag, create a GitHub release
+#   make dist VERSION=v0.1.0        clean dist/, build all and write dist/SHA256SUMS
 #   make clean                      remove build outputs (keeps downloaded models and whisper.cpp)
+#
+# Releases are made by GitHub Actions (.github/workflows/release.yml), not from a local machine.
 
 SHELL := /bin/bash
 
@@ -29,7 +31,7 @@ NPROC   := $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.modelName=$(MODEL)
 
-.PHONY: all deps lib model build test vet lint fmt release clean
+.PHONY: all deps lib model build test test-scripts vet lint fmt dist clean
 
 all:
 	@for m in $(MODELS); do $(MAKE) --no-print-directory build MODEL=$$m || exit 1; done
@@ -159,7 +161,7 @@ model: $(MODEL_FILE)
 
 $(MODEL_FILE):
 	mkdir -p build/models
-	curl -L --fail --progress-bar -o $@.part $(MODEL_URL)
+	curl -L --fail --retry 5 --retry-delay 10 --retry-all-errors --progress-bar -o $@.part $(MODEL_URL)
 	mv $@.part $@
 
 build: deps model
@@ -170,7 +172,11 @@ build: deps model
 
 # The real-transcription test uses the first downloaded model (run `make model` first to include it).
 test: deps
-	BVOICE_TEST_MODEL="$$(ls build/models/*.bin 2>/dev/null | head -1)" CGO_ENABLED=1 go test ./...
+	BVOICE_TEST_MODEL="$$(ls $(CURDIR)/build/models/*.bin 2>/dev/null | head -1)" CGO_ENABLED=1 go test ./...
+
+# Tests for the release scripts in scripts/.
+test-scripts:
+	bash scripts/next-version_test.sh
 
 vet: deps
 	CGO_ENABLED=1 go vet ./...
@@ -182,14 +188,13 @@ lint: deps
 fmt:
 	golangci-lint fmt ./...
 
-release:
-	@test -n "$(TAG)" || { echo "usage: make release TAG=v0.1.0"; exit 1; }
-	@git diff --quiet && git diff --cached --quiet || { echo "commit your changes first"; exit 1; }
+# Release files: every binary in MODELS plus SHA256SUMS. GitHub Actions also passes
+# CPU_ARCH=-mcpu=apple-m1 so the binaries run on every Apple silicon Mac, not just the build machine.
+dist:
 	rm -rf dist
-	$(MAKE) --no-print-directory all VERSION=$(TAG)
-	git tag -a $(TAG) -m "bvoice $(TAG)"
-	git push origin $(TAG)
-	gh release create $(TAG) dist/bvoice-* --title "bvoice $(TAG)" --generate-notes
+	$(MAKE) --no-print-directory all
+	cd dist && shasum -a 256 bvoice-* > SHA256SUMS
+	@cat dist/SHA256SUMS
 
 clean:
 	rm -rf dist $(OBJ) internal/model/model.bin

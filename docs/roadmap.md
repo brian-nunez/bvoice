@@ -8,8 +8,10 @@ of it: one self-contained binary, no special permissions, fully local, platform-
 
 Publish the first versioned GitHub release with both default binaries.
 
-- Run the manual test checklist in the [README](../README.md#manual-test-checklist) on macOS.
-- `make release TAG=v0.1.0` after the release branch is merged.
+- Releases are automatic: the first push to `main` with the release workflow publishes `v0.1.0`
+  (see [Releases](architecture.md#releases)).
+- Run the manual test checklist in the [README](../README.md#manual-test-checklist) on macOS
+  against the downloaded `v0.1.0` binaries.
 
 ## 2. Compare Whisper models
 
@@ -76,5 +78,5 @@ Open questions:
   support, and how to detect a tap on each without elevated permissions.
 - Clipboard access on Wayland versus X11.
 - UI toolkit for the tray icon and window.
-- Release artifacts: `make release` builds on the host OS only, so Linux binaries need a Linux build
-  host or CI.
+- Release artifacts: the release workflow builds on a `macos-15` runner only, so Linux binaries need
+  a Linux job in `.github/workflows/release.yml` that uploads to the same release.

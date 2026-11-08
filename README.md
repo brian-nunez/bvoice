@@ -19,6 +19,8 @@
   <img alt="Runs on macOS" src="https://img.shields.io/badge/runs%20on-macOS-0d9488?style=flat-square&logo=apple&logoColor=white">
   <img alt="Powered by whisper.cpp" src="https://img.shields.io/badge/powered%20by-whisper.cpp-0f766e?style=flat-square">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0d9488?style=flat-square">
+  <a href="https://github.com/brian-nunez/bvoice/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/brian-nunez/bvoice?style=flat-square&color=0f766e&label=release"></a>
+  <a href="https://github.com/brian-nunez/bvoice/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/brian-nunez/bvoice/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <br>
   <img alt="Ships as one binary" src="https://img.shields.io/badge/ships%20as-one%20binary-0f766e?style=flat-square">
   <img alt="No network at runtime" src="https://img.shields.io/badge/network-none%20at%20runtime-0d9488?style=flat-square">
@@ -44,7 +46,7 @@
 </p>
 
 > [!NOTE]
-> **There is no published release yet.** Build the binaries from source with the [quick start](#quick-start); it needs the Xcode Command Line Tools and Go.
+> Release binaries are for **Apple silicon Macs** (arm64). Download them from the [latest release](https://github.com/brian-nunez/bvoice/releases/latest), or build from source with the [quick start](#quick-start).
 
 <p align="center">
   <a href="#why-bvoice">Why bvoice</a> ·
@@ -65,6 +67,22 @@
 - **Out of your way.** The floating window never takes focus from the app you're typing in, and the hotkey ignores shortcuts like ⌥← and ⌥e.
 
 ## Quick start
+
+### Download a release
+
+Each [release](https://github.com/brian-nunez/bvoice/releases/latest) has both binaries and a `SHA256SUMS` file. They run on any Apple silicon Mac:
+
+```sh
+curl -LO https://github.com/brian-nunez/bvoice/releases/latest/download/bvoice-small.en-q5_1
+curl -LO https://github.com/brian-nunez/bvoice/releases/latest/download/SHA256SUMS
+shasum -a 256 -c SHA256SUMS --ignore-missing   # check the download
+chmod +x bvoice-small.en-q5_1
+./bvoice-small.en-q5_1                         # start bvoice
+```
+
+The binaries are ad-hoc signed but not notarized by Apple. Files downloaded with `curl` run as-is. If you download one with a browser, macOS quarantines it; clear that with `xattr -d com.apple.quarantine bvoice-small.en-q5_1`.
+
+### Build from source
 
 Install the Xcode Command Line Tools (`make`, `clang`) and Go 1.24 or later, then build and run:
 
@@ -136,7 +154,7 @@ Command-line only: `--data-dir`, `--verbose`, `--version`, `--help`. The [config
 
 ## Development
 
-Development also needs golangci-lint v2 for `make lint` and `make fmt`, and `gh` for releases.
+Development also needs golangci-lint v2 for `make lint` and `make fmt`.
 
 ```sh
 make all                          # dist/bvoice-small.en-q5_1 and dist/bvoice-large-v3-turbo-q5_0
@@ -144,9 +162,24 @@ make build MODEL=base.en-q5_1     # a binary with any other whisper.cpp model
 make model && make test           # tests, including a real transcription with the downloaded model
 make lint                         # linters and format checks (.golangci.yml)
 make fmt                          # apply gofumpt and goimports
-make release TAG=v0.1.0           # build all, tag, push the tag and create a GitHub release
+make test-scripts                 # tests for the release scripts
+make dist VERSION=v0.1.0          # clean dist/, build all and write dist/SHA256SUMS
 make clean                        # remove build outputs
 ```
+
+### Releases
+
+Releases are automatic. Every push to `main` runs [CI](.github/workflows/ci.yml) (format, lint, vet, tests, including a real transcription). When it passes, the [release workflow](.github/workflows/release.yml) works out the next [semantic version](https://semver.org) from the [Conventional Commits](https://www.conventionalcommits.org) since the last tag:
+
+| Commits since the last tag | Next version |
+|---|---|
+| None yet (first release) | `v0.1.0` |
+| A breaking change (`feat!:`, `fix(app)!:` or a `BREAKING CHANGE:` footer) | major |
+| `feat` | minor |
+| `fix`, `perf`, `refactor`, `build`, `revert` or a non-conventional subject | patch |
+| Only `docs`, `ci`, `chore`, `test` or `style` | no release |
+
+It then builds both binaries for every Apple silicon Mac, writes `SHA256SUMS`, checks each binary's signature and `--version`, and creates the tag and a GitHub release with generated notes and the files attached. To retry a release, run the workflow from the Actions tab.
 
 ### Layout
 
@@ -160,6 +193,8 @@ internal/store       SQLite settings and history
 internal/platform    hotkey, clipboard and sounds (macOS in platform_darwin.go)
 internal/ui          UI contract; ui/appkit is the macOS implementation
 docs                 configuration reference, architecture and roadmap
+scripts              release helpers (next version from Conventional Commits)
+.github/workflows    CI and automatic releases
 ```
 
 ## Manual test checklist

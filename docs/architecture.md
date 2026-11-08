@@ -153,6 +153,24 @@ whisper.cpp is fetched at a pinned commit and compiled by the `Makefile` into a 
 Metal and Accelerate on macOS and the Metal shaders embedded through `.incbin`. Building requires
 `make`, the Xcode Command Line Tools and Go. See the README for the targets.
 
+By default whisper.cpp is compiled with `-mcpu=native`, tuned to the build machine. Release builds
+pass `CPU_ARCH=-mcpu=apple-m1` so the binaries run on every Apple silicon Mac.
+
+## Releases
+
+Releases are built by GitHub Actions on `macos-15` runners:
+
+- `.github/workflows/ci.yml` checks formatting, vet, lint and tests (with a real transcription using
+  `small.en-q5_1`) on pushes to `main`, pull requests and manual runs.
+- `.github/workflows/release.yml` runs after CI passes on `main`. `scripts/next-version.sh` derives
+  the next semantic version from the Conventional Commits since the latest `vX.Y.Z` tag. The
+  workflow then runs `make dist`, verifies each binary's checksum, ad-hoc code signature (applied by
+  the Go linker) and `--version`, and creates the tag and a GitHub release with generated notes,
+  both binaries and `SHA256SUMS`.
+
+whisper.cpp and the models are cached between runs. Binaries are not notarized, so a copy downloaded
+through a browser must have its quarantine attribute cleared before it runs.
+
 ## Testing
 
 - **Unit tests** (any OS): the controller with fakes (background transcription, auto-stop, flags and
