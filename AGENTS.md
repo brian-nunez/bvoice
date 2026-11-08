@@ -44,7 +44,9 @@ These are product requirements. Do not break them, and stop and ask before worki
 | Vet | `make vet` |
 | Lint | `make lint` (golangci-lint v2, configured in `.golangci.yml`) |
 | Format | `make fmt` (gofumpt and goimports) |
-| Release | `make release TAG=vX.Y.Z` (needs a clean tree and `gh` signed in) |
+| Test the release scripts | `make test-scripts` |
+| Build release files | `make dist VERSION=vX.Y.Z` (cleans `dist/`, builds all, writes `dist/SHA256SUMS`) |
+| Release | Automatic on push to `main` (see [Release](#release)) |
 | Clean build outputs | `make clean` (keeps downloaded models and the whisper.cpp checkout) |
 
 `make test` runs `go test ./...` with `BVOICE_TEST_MODEL` set to the first file in `build/models/`.
@@ -55,7 +57,7 @@ it; without a model, that test is skipped.
 
 1. `make fmt` leaves no changes.
 2. `make lint` reports 0 issues, and `make vet` passes.
-3. `go test -race ./...` passes.
+3. `go test -race ./...` passes, and `make test-scripts` passes if `scripts/` changed.
 4. Docs are updated if behavior, flags, settings, build steps or layout changed (see below).
 
 ## Code layout
@@ -74,6 +76,8 @@ internal/audio/        Recorder interface; audio/mic is the miniaudio implementa
 internal/platform/     Hotkey/Clipboard/Sounds interfaces; platform_darwin.go and platform_other.go
 internal/ui/           UI contract and view models; ui/appkit is the AppKit implementation
 docs/                  configuration reference and architecture
+scripts/               release helpers: next-version.sh and its tests
+.github/workflows/     ci.yml (checks on push and pull request) and release.yml (automatic releases)
 ```
 
 Generated or downloaded paths are gitignored and must never be committed: `build/`, `dist/`,
@@ -173,9 +177,23 @@ mouse press occurs in between. New hotkey names go in `settings.Hotkeys` and `ke
 
 ### Release
 
-1. All changes are merged and the working tree is clean.
-2. `make release TAG=vX.Y.Z` builds both default binaries with that version, creates and pushes an
-   annotated tag, and creates a GitHub release with the binaries attached.
+Releases are made only by GitHub Actions; never tag or release by hand.
+
+1. A push to `main` runs `.github/workflows/ci.yml`: `make fmt` with no changes, `make vet`,
+   `make lint`, `go test -race ./...` with the `small.en-q5_1` model, and `make test-scripts`.
+2. When CI passes, `.github/workflows/release.yml` runs `scripts/next-version.sh`, which reads the
+   Conventional Commits since the latest `vX.Y.Z` tag: a breaking change bumps major, `feat` minor,
+   anything else patch, and only `docs`, `ci`, `chore`, `test` or `style` commits means no release.
+   The first release is `v0.1.0`.
+3. The workflow runs `make dist VERSION=<version> CPU_ARCH=-mcpu=apple-m1`, verifies the checksums,
+   each binary's ad-hoc signature and its `--version` output, then `gh release create` makes the tag
+   at the tested commit and a release with generated notes, both binaries and `SHA256SUMS`.
+
+Commit types therefore decide version numbers, so pick them carefully. Both workflows build on
+`macos-15` (Apple silicon) and can be rerun with `workflow_dispatch`. whisper.cpp and the models are
+cached between runs, keyed on the `Makefile` and the model name. CI and the release must use the same
+`CPU_ARCH`: whisper.cpp otherwise defaults to `-mcpu=native`, which ties the binary to the runner's
+CPU.
 
 Binaries are large (about 200 MB and 560 MB); they belong in releases, never in the repository.
 
